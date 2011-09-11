@@ -1,0 +1,22 @@
+p536
+lab1
+sept 2
+
+exec*():
+
+	execv() takes a null-terminated *argv[]
+
+	execvp() search the path while execv() does not.
+
+	execvlp()
+
+	...aha! l = list v = variables/args p = path...
+
+pipe(int *filedes);
+
+filedes[0] = read
+filedes[1] = write
+
+read(fd, buffer, count);
+write(fd, buffer, count);
+you must alloc the buffer...

@@ -1,0 +1,18 @@
+lecture 3
+sept 7, 2011
+
+separation of policy and mechanism. 
+Mechanisms determine how to do something, policies determine who should do something. 
+
+microkernel:  moves as much from the kernel into user space as possible.
+
+Processes:
+	-a process is a program in execution; process execution must progress in sequental fashion
+	-processes have memory, a CPU state, (registers, PC, SP, etc)
+	-operating systome state(open files, etc)
+	-processes get created by invoking system calls
+	-All but one (bootstrap) is started with the system call
+
+wait()/waitfor() 
+
+

@@ -1,0 +1,38 @@
+Interrupt Driven Hardware
+
+  software error or request creates an exception or a trap.
+  dual-mode:
+    user mode and kernel mode
+    mode bit distinguishes between the two
+    some instuctions can only be executed in kernel mode
+
+Timer to prevent Infinite loop:
+  -set interrupt after specific proiod
+  -decrement counter
+  -if == 0 generate interrupt
+  -mode bit == 0
+  -setup before scheduleing process to regain control or terminate program that exceeds allotted time
+  -mode bit == 0
+
+Computer System Operation
+  -I/O  device and the CPU can execute concurrently
+  -each device controller is in charge of a particular device type
+  -each device controller has a local buffer
+  -cpu moves data from/to main memory to/from local buffers
+  -I/O is from the device to local buffer of controlller
+  -Device controller informs CPU that it has finished its operation by causing an interrupt
+
+Common Funciton of Interrupts
+  -Interrupt transfers control to the interrupt service routine generally, throught the interrupt vector,
+   which contains the addresses of all the service routines. 
+  -interrupt arch must save address of interrupted instruction;
+  -incoming interrupts are disabled while another interrupt is being processed to prevent a lost interrupt. 
+  -disabled means that if another interrupt wants to execute, it keeps trying to send until the first one is finished.
+  -interrupts are hardware generated. 
+
+I/O Structure
+  -after I/O start, control returns to user program only upon I/O completion in synchronous IO.
+  -wait instruction idle the cpu.
+  -in asynchronous, program keeps executing after the io call, an then receives
+  an interrupt when IO is done. 
+

@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include "parse.h"
 #define TRUE 1
 #define FALSE 0
 
@@ -13,21 +14,15 @@ int main(int argc, char** argv) {
 	else
 		prompt = "myshell:";
 
-	char **cmd; //MUST FREE
-	int cmd_count = 0;
 	char* input; //MUST FREE
 	int input_size = 256; 
 	int input_read = 0;
-
-	//initialize cmd variable
-	if ((cmd = (char **) malloc((cmd_count + 1) * sizeof(char *))) == NULL) {
-		perror("malloc failed for cmd");
-	}
 
 	//initialize input variable
 	if ((input = (char *) malloc(input_size * sizeof(char))) == NULL) {
 		perror("malloc failed for input");
 	}
+
 
 	//main loop for the shell
 	while(TRUE) {
@@ -39,13 +34,13 @@ int main(int argc, char** argv) {
 			//exit and cleanup on CTRL-D
 			if(c == EOF) {
 				free(input);
-				free(cmd);
 				exit(0);
 			}
 
 			//grow the buffer size if we get beyond 255 (leave space for null terminator)
 			if(input_read >= (input_size -1)) {
-				if ((input = (char *) realloc(input, (input_size + 1)*sizeof(char *))) == NULL) {
+				input_size *=2;
+				if ((input = (char *) realloc(input,input_size*sizeof(char))) == NULL) {
 					perror("realloc failed in input");
 				}
 			}
@@ -54,20 +49,21 @@ int main(int argc, char** argv) {
 			input_read++;
 		}
 
+		//exit and cleanup on exit being typed in the prompt
 		if (strcmp(input, "exit") == 0) {
 				free(input);
-				free(cmd);
 				exit(0);
 		}
 
 		input[input_read] = '\0'; //null terminate the command
-		//memcpy(cmd[cmd_count],input, input_read); //copy the input to the cmd variable
-		//eval_cmd(input);
+
+		char** parsed_input = parse_args(input);
 		printf("input was: %s\n", input);
+		printf("parsed input was: %s\n", parsed_input);
 		for(int i = 0; i < input_size; i++) { input[i] = '\0';} //null out input
 		input_read = 0;
 
-		//todo: reset
+		free(parsed_input);
 	}
 
 	return 0;

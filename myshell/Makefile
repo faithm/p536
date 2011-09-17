@@ -4,9 +4,9 @@ LIBS =
 
 all: myshell
 
-OBJS = myshell.o safe_funcs.o pipe.o
+OBJS = myshell.o safe_funcs.o 
 
-myshell: myshell.o safe_funcs.o pipe.o
+myshell: myshell.o safe_funcs.o 
 	$(CC) $(CFLAGS) -o myshell $(OBJS) $(LIBS)
 
 clean:

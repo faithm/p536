@@ -10,8 +10,6 @@
 #define FALSE 0
 #define SPACE 32
 
-extern void connect_pipe(char* ps1, char* ps2);
-
 typedef struct node {
 	char* datum;
 	struct node* prev;
@@ -41,9 +39,9 @@ int main(int argc, char** argv) {
 	else
 		prompt = "myshell:";
 
+	bucket = (char *) safe_malloc(bucket_size*sizeof(char), "fatal error in main: bucket could not be malloced");
 	while(TRUE) {
 		printf("%s", prompt);
-		bucket = (char *) safe_malloc(bucket_size*sizeof(char), "fatal error in main: bucket could not be malloced");
 
 		char c;
 		while((c = getchar()) != '\n') {
@@ -53,7 +51,7 @@ int main(int argc, char** argv) {
 				exit(0);
 			}
 
-			if(isalnum(c)) {
+			if(isalnum(c) || c == '.' || c == '/') {
 				bucket = (char *) chksize(bucket, bucket_read, &bucket_size, bucket_size*2+1);
 				bucket[bucket_read] = c;
 				bucket_read += 1;
@@ -143,7 +141,8 @@ int main(int argc, char** argv) {
 				if(bucket_read >= 1) {
 					node *s = (node *) safe_malloc(sizeof(node), "error creating node");
 					s->datum = (char *) safe_malloc(bucket_read*sizeof(char)+1, "could not malloc datum in node");
-					strncpy(s->datum, bucket, bucket_read);
+					bucket[bucket_read+1] = '\0';
+					strncpy(s->datum, bucket, bucket_read+1);
 					if(cur != NULL)
 						cur->next = s;
 					bucket_read = 0;
@@ -171,6 +170,7 @@ int main(int argc, char** argv) {
 					node *s = (node *) safe_malloc(sizeof(node), "error creating node");
 					s->datum = (char *) safe_malloc(bucket_read*sizeof(char)+1, "could not malloc datum in node");
 					strncpy(s->datum, bucket, bucket_read);
+					s->datum[bucket_read+1] = '\0';
 					if(cur != NULL)
 						cur->next = s;
 					bucket_read = 0;
@@ -197,8 +197,9 @@ int main(int argc, char** argv) {
 
 		if(bucket_read >= 1) {
 			node *s = (node *) safe_malloc(sizeof(node), "error creating node");
-			s->datum = (char *) safe_malloc(bucket_read*sizeof(char)+1, "could not malloc datum in node");
+			s->datum = (char *) safe_malloc(bucket_read*sizeof(char)+2, "could not malloc datum in node");
 			strncpy(s->datum, bucket, bucket_read);
+			s->datum[bucket_read+1] = '\0';
 			bucket_read = 0;
 			if(cur != NULL)
 				cur->next = s;
@@ -210,15 +211,12 @@ int main(int argc, char** argv) {
 		if(head == NULL)
 			head = cur;
 
-		/*
-			 cur=head;
-			 while(cur != NULL && cur->datum != NULL) {
-			 printf("%s ", cur->datum);
-			 cur = cur->next; 
-			 }
-			 printf("\n");
-			 */
-
+		cur=head;
+		while(cur != NULL && cur->datum != NULL) {
+			printf("%s ", cur->datum);
+			cur = cur->next; 
+		}
+		printf("\n");
 
 		cur=head;
 		int pid, status;
@@ -228,66 +226,73 @@ int main(int argc, char** argv) {
 				int fd[2], pid;
 				char* ps1 = cur->prev->datum;
 				char* ps2 = cur->next->datum;
+				size_t ppid;
 
-				if(ps1 != NULL && ps2 != NULL) {
-					int fd[2];
-					if(pipe(fd) == -1)
-						perror("error creating pipe");
+				if((ppid = fork()) == -1) 
+					perror("could not fork in connect_pipe");
 
-					if((pid = fork()) == -1) 
-						perror("could not fork in connect_pipe");
+				if(ppid == 0) {
 
-					if(pid == 0) { //child
-						printf("in child of pipe");
-						close(fd[0]); //close read side
-						dup2(fd[1], STDOUT_FILENO); //redirect to stdout
-						close(fd[1]); //already redirecting to stdout;
-						execlp(ps1, ps1, NULL);
+					if(ps1 != NULL && ps2 != NULL) {
+						int fd[2];
+						if(pipe(fd) == -1)
+							perror("error creating pipe");
+
+						if((pid = fork()) == -1) 
+							perror("could not fork in connect_pipe");
+
+						if(pid == 0) { //child
+							printf("in child of pipe");
+							close(fd[0]); //close read side
+							dup2(fd[1], STDOUT_FILENO); //redirect to stdout
+							close(fd[1]); //already redirecting to stdout;
+							execlp(ps1, ps1, NULL);
+							perror("");
+						}
+
+						close(fd[1]); //don't write to pipe
+						dup2(fd[0], STDIN_FILENO); //dup to stdin
+						close(fd[0]);
+						execlp(ps2, ps2, NULL);
 						perror("");
+
 					}
-
 					//parent code
-					close(fd[1]); //don't write to pipe
-					dup2(fd[0], STDIN_FILENO); //dup to stdin
-					close(fd[0]);
-					execlp(ps2, ps2, NULL);
-					perror("");
-
+				} else {
+					waitpid(-1, &status, 0);
 				}
 				//redirect inside
 			} else if (cur->datum[0] == '>') {
 
+				if(cur->next->datum[0] == '>')
+					printf("appending with args: %s %s %s\n", cur->prev->datum, cur->datum, cur->next->next->datum);
+				else
+					printf("redirecting with args: %s %s %s\n", cur->prev->datum, cur->datum, cur->next->datum);
+
 				if((pid = fork()) == -1) 
 					perror("could not fork in connect_pipe");
 
-
 				if(pid == 0) { //child
+
 					char* arg = cur->prev->datum;
-					int fd1 = open(cur->prev->datum, O_RDONLY);
-					int fd2;
-
+					size_t fd;
 					//handle >> command
-					if(cur->next->datum[0] = '>') {
+					if(cur->next->datum[0] == '>') {
 						cur = cur->next; //advance the args list past the second >
-						fd2 = open(cur->next->datum, O_RDWR | O_CREAT | O_APPEND);
+						if((fd = open(cur->next->datum, O_RDWR | O_CREAT | O_APPEND, 0666)) < 0)
+							perror("could not open fd in input redirection");
+
 					} else {
-						fd2 = open(cur->next->datum, O_RDWR | O_CREAT);
+						if((fd = open(cur->next->datum, O_RDWR | O_CREAT, 0666)) < 0)
+							perror("could not open fd in input redirection");
 					}
 
-					int buf_size = 32;
-					char buff[buf_size];
-					int bytes_read;
-					dup2(fd1, STDOUT_FILENO);
-					close(fd1);
-					dup2(fd2, STDIN_FILENO);
-					close(fd2);
-					while((bytes_read = read(STDIN_FILENO, buff, buf_size)) > 0){
-						write(STDOUT_FILENO, buff, buf_size);
-					}
-					char *params[] = {arg, (char *) 0};
-					execve(arg, params, 0);
+					dup2(fd, STDOUT_FILENO);
+					execlp(arg, arg, 0);
 					perror("");
 				} else {
+					if(cur->next->datum[0] == '>') 
+						cur = cur->next; //advance the args list past the second >
 					waitpid(-1, &status, 0);
 				} 
 
@@ -299,6 +304,7 @@ int main(int argc, char** argv) {
 		}
 		cleanup_nodes(head);
 		head = NULL;
+		for(int i = 0; i < bucket_size; i++) { bucket[i] = '\0';}
 	} //while TRUE
 
 	//cleanup_nodes(head);

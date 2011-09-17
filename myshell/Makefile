@@ -12,6 +12,7 @@ myshell: myshell.o safe_funcs.o
 clean:
 	rm *.o
 	rm myshell
+	rm *.txt
 
 .c.o:
 	$(CC) -c $(CFLAGS) $*.c

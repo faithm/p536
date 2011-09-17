@@ -3,9 +3,13 @@
 #include <string.h>
 #include "safe_funcs.h"
 #include <ctype.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #define TRUE 1
 #define FALSE 0
 #define SPACE 32
+
+extern void connect_pipe(char* ps1, char* ps2);
 
 typedef struct node {
 	char* datum;
@@ -48,7 +52,7 @@ int main(int argc, char** argv) {
 				exit(0);
 			}
 
-			if(isalnum(c) || c == SPACE) {
+			if(isalnum(c)) {
 				bucket = (char *) chksize(bucket, read, &bucket_size, bucket_size*2+1);
 				bucket[read] = c;
 				read += 1;
@@ -212,6 +216,20 @@ int main(int argc, char** argv) {
 		}
 		printf("\n");
 
+
+		cur=head;
+		while(cur != NULL) {
+			if(cur->datum[0] == '|') {
+				int pid, status;
+				if(pid = fork() == -1) 
+					perror("fork failed in main");
+				if(pid != 0) {
+					waitpid(-1, &status, 0);
+				} else {
+					connect_pipe(cur->prev->datum, cur->next->datum);
+				}
+			}
+		}
 		cleanup_nodes(head);
 		head = NULL;
 	} //while TRUE

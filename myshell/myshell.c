@@ -27,6 +27,7 @@ int cleanup_nodes(node *n) {
 int main(int argc, char** argv) {
 
 	char* bucket;
+	char cmds[4] = {'|','>','<','&'};
 	int bucket_read = 0;
 	int bucket_size = 256;
 	node *head = NULL;
@@ -55,88 +56,7 @@ int main(int argc, char** argv) {
 				bucket = (char *) chksize(bucket, bucket_read, &bucket_size, bucket_size*2+1);
 				bucket[bucket_read] = c;
 				bucket_read += 1;
-			} else if(c == ';') {
-
-				if(bucket_read >= 1) {
-					node *s = (node *) safe_malloc(sizeof(node), "error creating node");
-					s->datum = (char *) safe_malloc(bucket_read*sizeof(char)+1, "could not malloc datum in node");
-					strncpy(s->datum, bucket, bucket_read);
-					if(cur != NULL)
-						cur->next = s;
-					bucket_read = 0;
-					s->prev = cur;
-					s->next = NULL;
-					cur = s;
-					if(head == NULL)
-						head = cur;
-				} 
-
-				node *n = safe_malloc(sizeof(node), "error creating node");
-				if(cur != NULL)
-					cur->next = n;
-				n->datum = (char *) safe_malloc(2*sizeof(char), "could not malloc datum in node");
-				n->datum[0] = c;
-				n->datum[1] = '\0';
-				n->prev = cur;
-				n->next = NULL;
-				cur = n;
-				if(head == NULL)
-					head = cur;
-			} else if(c == '|') {
-
-				if(bucket_read >= 1) {
-					node *s = (node *) safe_malloc(sizeof(node), "error creating node");
-					s->datum = (char *) safe_malloc(bucket_read*sizeof(char)+1, "could not malloc datum in node");
-					strncpy(s->datum, bucket, bucket_read);
-					if(cur != NULL)
-						cur->next = s;
-					bucket_read = 0;
-					s->prev = cur;
-					s->next = NULL;
-					cur = s;
-					if(head == NULL)
-						head = cur;
-				} 
-
-				node *n = safe_malloc(sizeof(node), "error creating node");
-				if(cur != NULL)
-					cur->next = n;
-				n->datum = (char *) safe_malloc(2*sizeof(char), "could not malloc datum in node");
-				n->datum[0] = '|';
-				n->datum[1] = '\0';
-				n->prev = cur;
-				n->next = NULL;
-				cur = n;
-				if(head == NULL)
-					head = cur;
-			} else if(c == '&') {
-
-				if(bucket_read >= 1) {
-					node *s = (node *) safe_malloc(sizeof(node), "error creating node");
-					s->datum = (char *) safe_malloc(bucket_read*sizeof(char)+1, "could not malloc datum in node");
-					strncpy(s->datum, bucket, bucket_read);
-					if(cur != NULL)
-						cur->next = s;
-					bucket_read = 0;
-					s->prev = cur;
-					s->next = NULL;
-					cur = s;
-					if(head == NULL)
-						head = cur;
-				} 
-
-				node *n = safe_malloc(sizeof(node), "error creating node");
-				if(cur != NULL)
-					cur->next = n;
-				n->datum = (char *) safe_malloc(2*sizeof(char), "could not malloc datum in node");
-				n->datum[0] = c;
-				n->datum[1] = '\0';
-				n->prev = cur;
-				n->next = NULL;
-				cur = n;
-				if(head == NULL)
-					head = cur;
-			} else if(c == '>') {
+			} else if(memchr(cmds, c, 4)) {
 
 				if(bucket_read >= 1) {
 					node *s = (node *) safe_malloc(sizeof(node), "error creating node");
@@ -164,37 +84,10 @@ int main(int argc, char** argv) {
 				cur = n;
 				if(head == NULL)
 					head = cur;
-			} else if(c == '<') {
-
-				if(bucket_read >= 1) {
-					node *s = (node *) safe_malloc(sizeof(node), "error creating node");
-					s->datum = (char *) safe_malloc(bucket_read*sizeof(char)+1, "could not malloc datum in node");
-					strncpy(s->datum, bucket, bucket_read);
-					s->datum[bucket_read+1] = '\0';
-					if(cur != NULL)
-						cur->next = s;
-					bucket_read = 0;
-					s->prev = cur;
-					s->next = NULL;
-					cur = s;
-					if(head == NULL)
-						head = cur;
-				} 
-
-				node *n = safe_malloc(sizeof(node), "error creating node");
-				if(cur != NULL)
-					cur->next = n;
-				n->datum = (char *) safe_malloc(2*sizeof(char), "could not malloc datum in node");
-				n->datum[0] = c;
-				n->datum[1] = '\0';
-				n->prev = cur;
-				n->next = NULL;
-				cur = n;
-				if(head == NULL)
-					head = cur;
 			}
 		}
 
+		//parse single args
 		if(bucket_read >= 1) {
 			node *s = (node *) safe_malloc(sizeof(node), "error creating node");
 			s->datum = (char *) safe_malloc(bucket_read*sizeof(char)+2, "could not malloc datum in node");
@@ -226,7 +119,7 @@ int main(int argc, char** argv) {
 				int fd[2], pid;
 				char* ps1 = cur->prev->datum;
 				char* ps2 = cur->next->datum;
-				size_t ppid;
+				int ppid;
 
 				if((ppid = fork()) == -1) 
 					perror("could not fork in connect_pipe");
@@ -241,7 +134,7 @@ int main(int argc, char** argv) {
 						if((pid = fork()) == -1) 
 							perror("could not fork in connect_pipe");
 
-						if(pid == 0) { //child
+						if(pid == 0) { //inner child
 							printf("in child of pipe");
 							close(fd[0]); //close read side
 							dup2(fd[1], STDOUT_FILENO); //redirect to stdout
@@ -250,27 +143,24 @@ int main(int argc, char** argv) {
 							perror("");
 						}
 
+						//inner fork parent
 						close(fd[1]); //don't write to pipe
 						dup2(fd[0], STDIN_FILENO); //dup to stdin
 						close(fd[0]);
 						execlp(ps2, ps2, NULL);
 						perror("");
 
-					}
+					} //end inner fork
 					//parent code
 				} else {
 					waitpid(-1, &status, 0);
 				}
-				//redirect inside
+
+				//redirect output
 			} else if (cur->datum[0] == '>') {
 
-				if(cur->next->datum[0] == '>')
-					printf("appending with args: %s %s %s\n", cur->prev->datum, cur->datum, cur->next->next->datum);
-				else
-					printf("redirecting with args: %s %s %s\n", cur->prev->datum, cur->datum, cur->next->datum);
-
 				if((pid = fork()) == -1) 
-					perror("could not fork in connect_pipe");
+					perror("could not fork in output redirecton");
 
 				if(pid == 0) { //child
 
@@ -295,6 +185,29 @@ int main(int argc, char** argv) {
 						cur = cur->next; //advance the args list past the second >
 					waitpid(-1, &status, 0);
 				} 
+
+				//redirect file
+			} else if (cur->datum[0] == '<') {
+				printf("redirecting file with args: %s %s %s\n", cur->prev->datum, cur->datum, cur->next->datum);//debug-remove
+				if((pid = fork()) == -1) 
+					perror("could not fork in file redirecton");
+
+				if(pid == 0) { //child
+					char* arg = cur->prev->datum;
+					size_t fd;
+					if((fd = open(cur->next->datum, O_RDONLY)) < 0){
+						perror("could not open fd in input redirection");
+					} else {
+						int bytes_read = 0, buf_size = 256;
+						char buf[buf_size];
+						dup2(fd, STDIN_FILENO);
+						execlp(arg, arg, NULL);
+						perror("");
+					}
+
+				} else { //parent
+					waitpid(-1, &status, 0);
+				}
 
 			} else {
 

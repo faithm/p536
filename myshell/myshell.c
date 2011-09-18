@@ -27,7 +27,7 @@ int cleanup_nodes(node *n) {
 int main(int argc, char** argv) {
 
 	char* bucket;
-	char cmds[4] = {'|','>','<','&'};
+	char cmds[5] = {'|','>','<','&', ' '};
 	int bucket_read = 0;
 	int bucket_size = 256;
 	node *head = NULL;
@@ -52,11 +52,11 @@ int main(int argc, char** argv) {
 				exit(0);
 			}
 
-			if(isalnum(c) || c == '.' || c == '/') {
+			if(isalnum(c) || c >= 33 && c <= 47 || c >= 91 && c <= 96 || c == 123 || c == 125 || c == 126) {
 				bucket = (char *) chksize(bucket, bucket_read, &bucket_size, bucket_size*2+1);
 				bucket[bucket_read] = c;
 				bucket_read += 1;
-			} else if(memchr(cmds, c, 4)) {
+			} else if(memchr(cmds, c, 5)) {
 
 				if(bucket_read >= 1) {
 					node *s = (node *) safe_malloc(sizeof(node), "error creating node");
@@ -73,17 +73,19 @@ int main(int argc, char** argv) {
 						head = cur;
 				} 
 
-				node *n = safe_malloc(sizeof(node), "error creating node");
-				if(cur != NULL)
-					cur->next = n;
-				n->datum = (char *) safe_malloc(2*sizeof(char), "could not malloc datum in node");
-				n->datum[0] = c;
-				n->datum[1] = '\0';
-				n->prev = cur;
-				n->next = NULL;
-				cur = n;
-				if(head == NULL)
-					head = cur;
+				if(c != SPACE) {
+					node *n = safe_malloc(sizeof(node), "error creating node");
+					if(cur != NULL)
+						cur->next = n;
+					n->datum = (char *) safe_malloc(2*sizeof(char), "could not malloc datum in node");
+					n->datum[0] = c;
+					n->datum[1] = '\0';
+					n->prev = cur;
+					n->next = NULL;
+					cur = n;
+					if(head == NULL)
+						head = cur;
+				}
 			}
 		}
 
@@ -116,44 +118,81 @@ int main(int argc, char** argv) {
 		while(cur != NULL) {
 			//pipe
 			if(cur->datum[0] == '|') {
-				int fd[2], pid;
-				char* ps1 = cur->prev->datum;
-				char* ps2 = cur->next->datum;
-				int ppid;
+				int fd[2], pid, ppid;
+				char* ps1; 
+				char* ps2;
+				int ps1_args_size = 6, ps2_args_size = 6;
+				char** ps1_args = (char **) safe_malloc(ps1_args_size*sizeof(char *), "fatal error mallocing args in pipe");
+				char** ps2_args = (char **) safe_malloc(ps2_args_size*sizeof(char *), "fatal error mallocing args in pipe");
 
 				if((ppid = fork()) == -1) 
 					perror("could not fork in connect_pipe");
 
 				if(ppid == 0) {
 
-					if(ps1 != NULL && ps2 != NULL) {
-						int fd[2];
-						if(pipe(fd) == -1)
-							perror("error creating pipe");
+					int fd[2];
+					if(pipe(fd) == -1)
+						perror("error creating pipe");
 
-						if((pid = fork()) == -1) 
-							perror("could not fork in connect_pipe");
+					if((pid = fork()) == -1) 
+						perror("could not fork in connect_pipe");
 
-						if(pid == 0) { //inner child
-							printf("in child of pipe");
-							close(fd[0]); //close read side
-							dup2(fd[1], STDOUT_FILENO); //redirect to stdout
-							close(fd[1]); //already redirecting to stdout;
-							execlp(ps1, ps1, NULL);
-							perror("");
+					if(pid == 0) { //inner child
+						close(fd[0]); //close read side
+						dup2(fd[1], STDOUT_FILENO); //redirect to stdout
+						close(fd[1]); //already redirecting to stdout;
+
+						//this is a hack...
+						//really we should be collect these tokens in a buffer as
+						//we loop, but for now its a TODO
+						//this is just walking over the list of cmds backwards until 
+						//we hit another command (namely the ;) and then we will
+						//parse again as a correct arg structure
+						
+						cur = cur->prev;
+						while(cur->prev != NULL && memchr(cmds, cur->datum[0], 4) == 0) { 
+							cur = cur->prev;
 						}
 
-						//inner fork parent
-						close(fd[1]); //don't write to pipe
-						dup2(fd[0], STDIN_FILENO); //dup to stdin
-						close(fd[0]);
-						execlp(ps2, ps2, NULL);
+						ps1 = cur->datum; //first cmd after a ; or at the beginning should be the one to exec
+						printf("ps1 is: %s\n", ps1);
+						int i = 0;
+						while(cur != NULL && memchr(cmds, cur->datum[0], 4) == 0) {
+							ps1_args = (char **) chksize(ps1_args, i, &ps1_args_size, ps1_args_size*2+1);
+							ps1_args[i] = cur->datum;
+							printf("ps1_args at %d: %s\n", i, cur->datum);
+							cur = cur->next;
+							i++;
+						}
+						ps1_args[i] = NULL;
+						execvp(ps1, ps1_args);
 						perror("");
+					}
 
-					} //end inner fork
+					//inner fork parent
+					close(fd[1]); //don't write to pipe
+					dup2(fd[0], STDIN_FILENO); //dup to stdin
+					close(fd[0]);
+					cur = cur->next; //skip the cmd node
+					int i = 0;
+					ps2 = cur->datum;
+					printf("ps2 is: %s\n", ps2);
+					while(cur != NULL && memchr(cmds, cur->datum[0], 4) == 0) {
+						ps2_args = (char **) chksize(ps2_args, i, &ps2_args_size, ps2_args_size*2+1);
+						ps2_args[i] = cur->datum;
+						printf("ps2_args at %d: %s\n", i, cur->datum);
+						cur = cur->next;
+						i++;
+					}
+					ps2_args[i] = NULL;
+					execvp(ps2, ps2_args);
+					perror("");
+
 					//parent code
 				} else {
 					waitpid(-1, &status, 0);
+					free(ps1_args);
+					free(ps2_args);
 				}
 
 				//redirect output
@@ -188,7 +227,6 @@ int main(int argc, char** argv) {
 
 				//redirect file
 			} else if (cur->datum[0] == '<') {
-				printf("redirecting file with args: %s %s %s\n", cur->prev->datum, cur->datum, cur->next->datum);//debug-remove
 				if((pid = fork()) == -1) 
 					perror("could not fork in file redirecton");
 

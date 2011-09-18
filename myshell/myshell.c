@@ -108,28 +108,22 @@ int main(int argc, char** argv) {
 
 		cur=head;
 		while(cur != NULL && cur->datum != NULL) {
-			printf("%s ", cur->datum);
 			cur = cur->next; 
 		}
-		printf("\n");
 
 		cur=head;
-		int pid, status;
+		int pid, status, lhs_i = 0, rhs_i = 0;
 		while(cur != NULL) {
+			int lhs_args_size = 32, rhs_args_size = 32;
+			char** lhs_args = (char **) safe_malloc(lhs_args_size*sizeof(char *), "fatal error mallocing args in pipe");
+			char** rhs_args = (char **) safe_malloc(rhs_args_size*sizeof(char *), "fatal error mallocing args in pipe");
 			//pipe
 			if(cur->datum[0] == '|') {
 				int fd[2], pid, ppid;
-				char* ps1; 
-				char* ps2;
-				int ps1_args_size = 6, ps2_args_size = 6;
-				char** ps1_args = (char **) safe_malloc(ps1_args_size*sizeof(char *), "fatal error mallocing args in pipe");
-				char** ps2_args = (char **) safe_malloc(ps2_args_size*sizeof(char *), "fatal error mallocing args in pipe");
-
 				if((ppid = fork()) == -1) 
 					perror("could not fork in connect_pipe");
 
 				if(ppid == 0) {
-
 					int fd[2];
 					if(pipe(fd) == -1)
 						perror("error creating pipe");
@@ -142,57 +136,33 @@ int main(int argc, char** argv) {
 						dup2(fd[1], STDOUT_FILENO); //redirect to stdout
 						close(fd[1]); //already redirecting to stdout;
 
-						//this is a hack...
-						//really we should be collect these tokens in a buffer as
-						//we loop, but for now its a TODO
-						//this is just walking over the list of cmds backwards until 
-						//we hit another command (namely the ;) and then we will
-						//parse again as a correct arg structure
-						
-						cur = cur->prev;
-						while(cur->prev != NULL && memchr(cmds, cur->datum[0], 4) == 0) { 
-							cur = cur->prev;
-						}
-
-						ps1 = cur->datum; //first cmd after a ; or at the beginning should be the one to exec
-						printf("ps1 is: %s\n", ps1);
-						int i = 0;
-						while(cur != NULL && memchr(cmds, cur->datum[0], 4) == 0) {
-							ps1_args = (char **) chksize(ps1_args, i, &ps1_args_size, ps1_args_size*2+1);
-							ps1_args[i] = cur->datum;
-							printf("ps1_args at %d: %s\n", i, cur->datum);
-							cur = cur->next;
-							i++;
-						}
-						ps1_args[i] = NULL;
-						execvp(ps1, ps1_args);
+						lhs_args[lhs_i] = NULL; //null terminate the argument list
+						execvp(lhs_args[0], lhs_args);
 						perror("");
 					}
-
 					//inner fork parent
+					 rhs_i = 0;
+					cur = cur->next; //advance the state past the pipe command
+					while(cur != NULL && memchr(cmds, cur->datum[0], 4) == 0) { //gather up the args to the right of the pipe
+						rhs_args = (char **) chksize(rhs_args,rhs_i, &rhs_args_size, rhs_args_size*2+1);
+						rhs_args[rhs_i] = cur->datum;
+						cur = cur->next;
+						rhs_i++;
+					}
+					rhs_args[rhs_i] = NULL;
+
 					close(fd[1]); //don't write to pipe
 					dup2(fd[0], STDIN_FILENO); //dup to stdin
 					close(fd[0]);
-					cur = cur->next; //skip the cmd node
-					int i = 0;
-					ps2 = cur->datum;
-					printf("ps2 is: %s\n", ps2);
-					while(cur != NULL && memchr(cmds, cur->datum[0], 4) == 0) {
-						ps2_args = (char **) chksize(ps2_args, i, &ps2_args_size, ps2_args_size*2+1);
-						ps2_args[i] = cur->datum;
-						printf("ps2_args at %d: %s\n", i, cur->datum);
-						cur = cur->next;
-						i++;
-					}
-					ps2_args[i] = NULL;
-					execvp(ps2, ps2_args);
+					//cur = cur->next; //skip the cmd node
+					execvp(rhs_args[0],rhs_args);
 					perror("");
 
 					//parent code
 				} else {
+					for(int i = 0; i < lhs_args_size; i++) {lhs_args[i] = '\0';}
+					for(int i = 0; i < rhs_args_size; i++) {rhs_args[i] = '\0';}
 					waitpid(-1, &status, 0);
-					free(ps1_args);
-					free(ps2_args);
 				}
 
 				//redirect output
@@ -236,8 +206,8 @@ int main(int argc, char** argv) {
 					if((fd = open(cur->next->datum, O_RDONLY)) < 0){
 						perror("could not open fd in input redirection");
 					} else {
-						int bytes_read = 0, buf_size = 256;
-						char buf[buf_size];
+						//	int bytes_read = 0, buf_size = 256;
+					//	char buf[buf_size];
 						dup2(fd, STDIN_FILENO);
 						execlp(arg, arg, NULL);
 						perror("");
@@ -246,13 +216,20 @@ int main(int argc, char** argv) {
 				} else { //parent
 					waitpid(-1, &status, 0);
 				}
+			}  else {//end cmd tests 
 
-			} else {
-
+			//append to the lhs buffer
+			lhs_args = (char **) chksize(lhs_args,lhs_i, &lhs_args_size, lhs_args_size*2+1);
+			printf("cur arg: %s\n", cur->datum);
+			lhs_args[lhs_i] = cur->datum;
+			lhs_i++;
 			}
 
 			cur = cur->next;
-		}
+		free(lhs_args);
+		free(rhs_args);
+		} //while cur !NULL
+
 		cleanup_nodes(head);
 		head = NULL;
 		for(int i = 0; i < bucket_size; i++) { bucket[i] = '\0';}

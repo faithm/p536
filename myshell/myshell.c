@@ -165,11 +165,13 @@ int main(int argc, char** argv) {
 			if(cur != NULL && memchr(cmds,cur->datum[0], 1)) {
 				AMPERSAND = 1; //WNOHANG
 			}
+			
+			if(cur != NULL && cur->datum[0] == ';') { //skip over this command since we don't want to execute it
+				cur = cur->next;
+			}
 
-			if(args != NULL && strstr(args[0], "cd")) { //cd as a builtin command
-				if(args[1] == NULL) {
-					perror("incorrect number of arguments to cd");
-				} else if(chdir(args[1]) != 0) {
+			if(args[0] != NULL && strstr(args[0], "cd")) { //cd as a builtin command
+				 if(chdir(args[1]) != 0) {
 					perror("changing directory failed: invalid path");	
 				}
 			} else if(cur != NULL && cur->datum[0] == '|') { //pipe
@@ -225,24 +227,28 @@ int main(int argc, char** argv) {
 				if(pid == 0) { //child
 
 					char* arg = cur->prev->datum;
-					size_t fd;
+					int fd;
 					if(cur->next->datum[0] == '>') { //handle >> command
 						cur = cur->next; //advance the args list past the second >
-						if((fd = open(cur->next->datum, O_RDWR | O_CREAT | O_APPEND, 0555)) < 0)
+						if((fd = open(cur->next->datum, O_RDWR | O_CREAT | O_APPEND, 0666)) < 0)
 							perror("could not open fd in input redirection");
 
 					} else {
-						if((fd = open(cur->next->datum, O_RDWR | O_CREAT, 0555)) < 0)
+						if((fd = open(cur->next->datum, O_RDWR | O_CREAT, 0666)) < 0)
 							perror("could not open fd in input redirection");
 					}
-					if(dup2(fd, STDOUT_FILENO) == -1) {
+					if(dup2(fd, STDOUT_FILENO) < 0) {
 						perror("fatal error: dup2 failed in file redirection");
 					}
-					execlp(arg, arg, 0);
+					if(close(fd) < 0) {
+						perror("close operation in redirection failed");
+					}
+					execvp(args[0], args);
 					perror("");
 				} else {
 					if(cur != NULL && cur->next->datum[0] == '>') 
 						cur = cur->next; //advance the args list past the second >
+					cur = cur->next;
 					waitpid(-1, &status, AMPERSAND);
 				} 
 
@@ -253,18 +259,22 @@ int main(int argc, char** argv) {
 
 				if(pid == 0) { //child
 					char* arg = cur->prev->datum;
-					size_t fd;
+					int fd;
 					if((fd = open(cur->next->datum, O_RDONLY)) < 0){
 						perror("could not open fd in input redirection");
 					} else {
 						if(dup2(fd, STDIN_FILENO) == -1) {
 							perror("fatal error: dup2 failed in file redirection");
 						}
-						execlp(arg, arg, NULL);
+						if(close(fd) < 0) {
+							perror("close operation in redirection failed");
+						}
+						execvp(args[0], args);
 						perror("");
 					}
 
 				} else { //parent
+					cur = cur->next;
 					waitpid(-1, &status, AMPERSAND);
 					for(int i = 0; i < args_size; i++) {args[i] = '\0';}
 				}
